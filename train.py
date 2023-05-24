@@ -73,6 +73,8 @@ def create_trainer(
         x, *c = batch_on_device
         noise = torch.randn_like(x)
 
+        x *= cfg.alpha
+
         N = x.shape[0]
         # augmentation
         db_scale = 10 ** (torch.empty(N, device=device).uniform_(-6, 6) / 20)
@@ -302,8 +304,11 @@ def training(local_rank, cfg: DictConfig):
             else:
                 c = []
 
-            z_0 = reverse_process_new(
-                z_1, gamma, steps, ema_model, *c, with_amp=cfg.with_amp
+            z_0 = (
+                reverse_process_new(
+                    z_1, gamma, steps, ema_model, *c, with_amp=cfg.with_amp
+                )
+                / cfg.alpha
             )
             generated = z_0.squeeze().clip(-0.99, 0.99)
             # tb_logger.writer.add_audio(
