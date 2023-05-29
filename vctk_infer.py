@@ -383,13 +383,11 @@ def reverse_red(
             mu.grad += (noise_hat - noise) * lambda_t
         optim.step()
 
-    final = (mu.detach() - var[0].sqrt() * noise_hat) / alpha[0]
-    return final
+    return mu.detach()
 
 
-def foo(
-    fq: Queue,
-    rq: Queue,
+def core_compute(
+    filename: str,
     q: int,
     infer_type: str,
     lr: float,
@@ -401,239 +399,386 @@ def foo(
     gamma,
     steps,
 ):
+    alpha = gamma2as(gamma)[0]
+    device = gamma.device
+    raw_y, sr = torchaudio.load(filename)
+    raw_y = raw_y.to(device)
+
+    offset = raw_y.shape[1] % q
+    if offset:
+        y = raw_y[:, :-offset]
+    else:
+        y = raw_y
+
+    y_lowpass = downsampler(y)
+
+    if infer_type == "nuwave":
+        y_hat = F.upsample(
+            y_lowpass.unsqueeze(1),
+            scale_factor=q,
+            mode="linear",
+            align_corners=False,
+        ).squeeze(1)
+        y_recon = nuwave_reverse(y_hat, gamma, amp.autocast()(model), verbose=False)
+    elif infer_type == "inpainting":
+        y_hat = upsampler(y_lowpass)
+        y_recon = reverse(
+            y_hat,
+            gamma,
+            amp.autocast()(downsampler),
+            amp.autocast()(upsampler),
+            amp.autocast()(lambda x, t: model(x, steps[t : t + 1])),
+            verbose=False,
+        )
+    elif infer_type == "nuwave-inpainting":
+        y_hat = upsampler(y_lowpass)
+        nuwave_cond = F.upsample(
+            y_lowpass.unsqueeze(1),
+            scale_factor=q,
+            mode="linear",
+            align_corners=False,
+        ).squeeze(1)
+        y_recon = reverse(
+            y_hat,
+            gamma,
+            amp.autocast()(downsampler),
+            amp.autocast()(upsampler),
+            amp.autocast()(lambda x, t: model(x, nuwave_cond, alpha[t : t + 1])),
+            verbose=False,
+        )
+    elif infer_type == "nuwave-manifold":
+        y_hat = upsampler(y_lowpass)
+        nuwave_cond = F.upsample(
+            y_lowpass.unsqueeze(1),
+            scale_factor=q,
+            mode="linear",
+            align_corners=False,
+        ).squeeze(1)
+        y_recon = reverse_manifold(
+            y_hat,
+            gamma,
+            amp.autocast()(downsampler),
+            amp.autocast()(upsampler),
+            amp.autocast()(
+                lambda x, t, idx: model(x, nuwave_cond[:, idx], alpha[t : t + 1])
+            ),
+            lr=lr,
+            verbose=False,
+        )
+    elif infer_type == "manifold":
+        y_hat = upsampler(y_lowpass)
+        y_recon = reverse_manifold(
+            y_hat,
+            gamma,
+            amp.autocast()(downsampler),
+            amp.autocast()(upsampler),
+            amp.autocast(enabled=False)(lambda x, t, idx: model(x, steps[t : t + 1])),
+            lr=lr,
+            verbose=False,
+        )
+    elif infer_type == "nuwave2":
+        scaler = y.abs().max()
+        y_hat = (
+            torch.tensor(
+                resample_poly(y_lowpass.cpu().numpy(), q, 1, axis=-1),
+                device=device,
+                dtype=y.dtype,
+            )
+            / scaler
+        )
+        # y_hat = upsampler(y_lowpass) / scaler
+        band = y_hat.new_zeros((1, 513), dtype=torch.int64)
+        band[:, : int(513 / q)] = 1
+        y_recon = (
+            nuwave2_reverse(
+                y_hat,
+                band,
+                gamma - 2 * scaler.log(),
+                amp.autocast()(model),
+                verbose=False,
+            )
+            * scaler
+        )
+    elif infer_type == "nuwave2-manifold":
+        scaler = y.abs().max()
+        y_hat = upsampler(y_lowpass) / scaler
+        nuwave2_cond = (
+            torch.tensor(
+                resample_poly(y_lowpass.cpu().numpy(), q, 1, axis=-1),
+                device=device,
+                dtype=y.dtype,
+            )
+            / scaler
+        )
+        band = y_hat.new_zeros((1, 513), dtype=torch.int64)
+        band[:, : int(513 / q)] = 1
+        shifted_gamma = gamma - 2 * scaler.log()
+        norm_nlogsnr = (shifted_gamma + 20) / 40
+        norm_nlogsnr.clip_(0, 1)
+        y_recon = (
+            reverse_manifold(
+                y_hat,
+                shifted_gamma,
+                amp.autocast()(downsampler),
+                amp.autocast()(upsampler),
+                amp.autocast(enabled=False)(
+                    lambda x, t, idx: model(
+                        x, nuwave2_cond[:, idx], band, norm_nlogsnr[t : t + 1]
+                    )
+                ),
+                lr=lr,
+                verbose=False,
+            )
+            * scaler
+        )
+    elif infer_type == "nuwave2-inpainting":
+        scaler = y.abs().max()
+        y_hat = upsampler(y_lowpass) / scaler
+        nuwave2_cond = (
+            torch.tensor(
+                resample_poly(y_lowpass.cpu().numpy(), q, 1, axis=-1),
+                device=device,
+                dtype=y.dtype,
+            )
+            / scaler
+        )
+        band = y_hat.new_zeros((1, 513), dtype=torch.int64)
+        band[:, : int(513 / q)] = 1
+        shifted_gamma = gamma - 2 * scaler.log()
+        norm_nlogsnr = (shifted_gamma + 20) / 40
+        norm_nlogsnr.clip_(0, 1)
+        y_recon = (
+            reverse(
+                y_hat,
+                shifted_gamma,
+                amp.autocast()(downsampler),
+                amp.autocast()(upsampler),
+                amp.autocast()(
+                    lambda x, t: model(x, nuwave2_cond, band, norm_nlogsnr[t : t + 1])
+                ),
+                verbose=False,
+            )
+            * scaler
+        )
+    elif infer_type == "nuwave2-ddim":
+        scaler = y.abs().max()
+        y_hat = (
+            torch.tensor(
+                resample_poly(y_lowpass.cpu().numpy(), q, 1, axis=-1),
+                device=device,
+                dtype=y.dtype,
+            )
+            / scaler
+        )
+        band = y_hat.new_zeros((1, 513), dtype=torch.int64)
+        band[:, : int(513 / q)] = 1
+        y_recon = (
+            nuwave2_ddim(
+                y_hat,
+                band,
+                gamma - 2 * scaler.log(),
+                amp.autocast()(model),
+                verbose=False,
+            )
+            * scaler
+        )
+    elif infer_type == "red":
+        y_recon = reverse_red(
+            y_lowpass,
+            upsampler(y_lowpass),
+            gamma,
+            amp.autocast()(downsampler),
+            amp.autocast()(lambda x, t: model(x, steps[t : t + 1])),
+            lr=lr,
+            verbose=False,
+        )
+    else:
+        raise ValueError(
+            "infer_type must be one of 'nuwave', 'inpainting', 'nuwave-inpainting', 'nuwave-manifold', 'manifold', 'nuwave2', 'nuwave2-manifold', 'nuwave2-inpainting', 'nuwave2-ddim', 'red'"
+        )
+
+    if offset:
+        y_recon = torch.cat([y_recon, y_recon.new_zeros(1, offset)], dim=1)
+
+    y_recon, raw_y = y_recon.squeeze(), raw_y.squeeze()
+
+    assert not torch.isnan(y_recon).any(), "NaN detected"
+
+    if target_sr is not None:
+        y_recon = torch.from_numpy(
+            resample(y_recon.cpu().numpy(), target_sr / sr, "sinc_best")
+        ).to(device)
+        raw_y = torch.from_numpy(
+            resample(raw_y.cpu().numpy(), target_sr / sr, "sinc_best")
+        ).to(device)
+
+    lsd = evaluater(y_recon, raw_y).item()
+    assert not math.isnan(lsd), "lsd is nan"
+    return filename, lsd, y_recon, y_lowpass, sr
+
+
+def foo(
+    fq: Queue,
+    rq: Queue,
+    *args,
+    **kwargs,
+):
     try:
-        alpha = gamma2as(gamma)[0]
         while not fq.empty():
             filename = fq.get()
-            device = gamma.device
-
-            raw_y, sr = torchaudio.load(filename)
-            raw_y = raw_y.to(device)
-
-            offset = raw_y.shape[1] % q
-            if offset:
-                y = raw_y[:, :-offset]
-            else:
-                y = raw_y
-
-            y_lowpass = downsampler(y)
-
-            if infer_type == "nuwave":
-                y_hat = F.upsample(
-                    y_lowpass.unsqueeze(1),
-                    scale_factor=q,
-                    mode="linear",
-                    align_corners=False,
-                ).squeeze(1)
-                y_recon = nuwave_reverse(
-                    y_hat, gamma, amp.autocast()(model), verbose=False
-                )
-            elif infer_type == "inpainting":
-                y_hat = upsampler(y_lowpass)
-                y_recon = reverse(
-                    y_hat,
-                    gamma,
-                    amp.autocast()(downsampler),
-                    amp.autocast()(upsampler),
-                    amp.autocast()(lambda x, t: model(x, steps[t : t + 1])),
-                    verbose=False,
-                )
-            elif infer_type == "nuwave-inpainting":
-                y_hat = upsampler(y_lowpass)
-                nuwave_cond = F.upsample(
-                    y_lowpass.unsqueeze(1),
-                    scale_factor=q,
-                    mode="linear",
-                    align_corners=False,
-                ).squeeze(1)
-                y_recon = reverse(
-                    y_hat,
-                    gamma,
-                    amp.autocast()(downsampler),
-                    amp.autocast()(upsampler),
-                    amp.autocast()(
-                        lambda x, t: model(x, nuwave_cond, alpha[t : t + 1])
-                    ),
-                    verbose=False,
-                )
-            elif infer_type == "nuwave-manifold":
-                y_hat = upsampler(y_lowpass)
-                nuwave_cond = F.upsample(
-                    y_lowpass.unsqueeze(1),
-                    scale_factor=q,
-                    mode="linear",
-                    align_corners=False,
-                ).squeeze(1)
-                y_recon = reverse_manifold(
-                    y_hat,
-                    gamma,
-                    amp.autocast()(downsampler),
-                    amp.autocast()(upsampler),
-                    amp.autocast()(
-                        lambda x, t, idx: model(
-                            x, nuwave_cond[:, idx], alpha[t : t + 1]
-                        )
-                    ),
-                    lr=lr,
-                    verbose=False,
-                )
-            elif infer_type == "manifold":
-                y_hat = upsampler(y_lowpass)
-                y_recon = reverse_manifold(
-                    y_hat,
-                    gamma,
-                    amp.autocast()(downsampler),
-                    amp.autocast()(upsampler),
-                    amp.autocast(enabled=False)(
-                        lambda x, t, idx: model(x, steps[t : t + 1])
-                    ),
-                    lr=lr,
-                    verbose=False,
-                )
-            elif infer_type == "nuwave2":
-                scaler = y.abs().max()
-                y_hat = (
-                    torch.tensor(
-                        resample_poly(y_lowpass.cpu().numpy(), q, 1, axis=-1),
-                        device=device,
-                        dtype=y.dtype,
-                    )
-                    / scaler
-                )
-                # y_hat = upsampler(y_lowpass) / scaler
-                band = y_hat.new_zeros((1, 513), dtype=torch.int64)
-                band[:, : int(513 / q)] = 1
-                y_recon = (
-                    nuwave2_reverse(
-                        y_hat,
-                        band,
-                        gamma - 2 * scaler.log(),
-                        amp.autocast()(model),
-                        verbose=False,
-                    )
-                    * scaler
-                )
-            elif infer_type == "nuwave2-manifold":
-                scaler = y.abs().max()
-                y_hat = upsampler(y_lowpass) / scaler
-                nuwave2_cond = (
-                    torch.tensor(
-                        resample_poly(y_lowpass.cpu().numpy(), q, 1, axis=-1),
-                        device=device,
-                        dtype=y.dtype,
-                    )
-                    / scaler
-                )
-                band = y_hat.new_zeros((1, 513), dtype=torch.int64)
-                band[:, : int(513 / q)] = 1
-                shifted_gamma = gamma - 2 * scaler.log()
-                norm_nlogsnr = (shifted_gamma + 20) / 40
-                norm_nlogsnr.clip_(0, 1)
-                y_recon = (
-                    reverse_manifold(
-                        y_hat,
-                        shifted_gamma,
-                        amp.autocast()(downsampler),
-                        amp.autocast()(upsampler),
-                        amp.autocast(enabled=False)(
-                            lambda x, t, idx: model(
-                                x, nuwave2_cond[:, idx], band, norm_nlogsnr[t : t + 1]
-                            )
-                        ),
-                        lr=lr,
-                        verbose=False,
-                    )
-                    * scaler
-                )
-            elif infer_type == "nuwave2-inpainting":
-                scaler = y.abs().max()
-                y_hat = upsampler(y_lowpass) / scaler
-                nuwave2_cond = (
-                    torch.tensor(
-                        resample_poly(y_lowpass.cpu().numpy(), q, 1, axis=-1),
-                        device=device,
-                        dtype=y.dtype,
-                    )
-                    / scaler
-                )
-                band = y_hat.new_zeros((1, 513), dtype=torch.int64)
-                band[:, : int(513 / q)] = 1
-                shifted_gamma = gamma - 2 * scaler.log()
-                norm_nlogsnr = (shifted_gamma + 20) / 40
-                norm_nlogsnr.clip_(0, 1)
-                y_recon = (
-                    reverse(
-                        y_hat,
-                        shifted_gamma,
-                        amp.autocast()(downsampler),
-                        amp.autocast()(upsampler),
-                        amp.autocast()(
-                            lambda x, t: model(
-                                x, nuwave2_cond, band, norm_nlogsnr[t : t + 1]
-                            )
-                        ),
-                        verbose=False,
-                    )
-                    * scaler
-                )
-            elif infer_type == "nuwave2-ddim":
-                scaler = y.abs().max()
-                y_hat = (
-                    torch.tensor(
-                        resample_poly(y_lowpass.cpu().numpy(), q, 1, axis=-1),
-                        device=device,
-                        dtype=y.dtype,
-                    )
-                    / scaler
-                )
-                band = y_hat.new_zeros((1, 513), dtype=torch.int64)
-                band[:, : int(513 / q)] = 1
-                y_recon = (
-                    nuwave2_ddim(
-                        y_hat,
-                        band,
-                        gamma - 2 * scaler.log(),
-                        amp.autocast()(model),
-                        verbose=False,
-                    )
-                    * scaler
-                )
-            elif infer_type == "red":
-                y_recon = reverse_red(
-                    y_lowpass,
-                    upsampler(y_lowpass),
-                    gamma,
-                    amp.autocast()(downsampler),
-                    amp.autocast()(lambda x, t: model(x, steps[t : t + 1])),
-                    lr=lr,
-                    verbose=False,
-                )
-            else:
-                raise ValueError(
-                    "infer_type must be one of 'nuwave', 'inpainting', 'nuwave-inpainting', 'nuwave-manifold', 'manifold', 'nuwave2', 'nuwave2-manifold', 'nuwave2-inpainting'"
-                )
-
-            if offset:
-                y_recon = torch.cat([y_recon, y_recon.new_zeros(1, offset)], dim=1)
-
-            y_recon, raw_y = y_recon.squeeze(), raw_y.squeeze()
-
-            assert not torch.isnan(y_recon).any(), "NaN detected"
-
-            if target_sr is not None:
-                y_recon = torch.from_numpy(
-                    resample(y_recon.cpu().numpy(), target_sr / sr, "sinc_best")
-                ).to(device)
-                raw_y = torch.from_numpy(
-                    resample(raw_y.cpu().numpy(), target_sr / sr, "sinc_best")
-                ).to(device)
-
-            lsd = evaluater(y_recon, raw_y).item()
-            assert not math.isnan(lsd), "lsd is nan"
-            rq.put((filename, lsd, y_recon, y_lowpass, sr))
+            result = core_compute(
+                filename,
+                *args,
+                **kwargs,
+            )
+            rq.put(result)
 
     except Exception as e:
         rq.put((filename, e))
+
+
+def run_distributed(
+    gpu_indexes: List[int],
+    args: argparse.Namespace,
+    model,
+    downsampler,
+    upsampler,
+    gamma,
+    steps,
+):
+    file_q = Queue()
+    result_q = Queue()
+    processes = []
+
+    for i in gpu_indexes:
+        device = f"cuda:{i}"
+        evaluater = LSD()
+
+        p = Process(
+            target=foo,
+            args=(
+                file_q,
+                result_q,
+                args.rate,
+                args.infer_type,
+                args.lr,
+                args.target_sr,
+                deepcopy(model).to(device),
+                evaluater.to(device),
+                deepcopy(downsampler).to(device),
+                deepcopy(upsampler).to(device),
+                gamma.to(device),
+                steps.to(device),
+            ),
+        )
+        processes.append(p)
+
+    vctk_path = Path(args.vctk)
+    test_files = list(vctk_path.glob("**/*.wav"))
+
+    for filename in test_files:
+        file_q.put(filename)
+
+    for p in processes:
+        p.start()
+
+    pbar = tqdm(total=len(test_files))
+    n = 0
+    cumulated_lsd = 0
+    try:
+        while n < len(test_files):
+            filename, lsd, *results = result_q.get()
+            if isinstance(lsd, Exception):
+                print(f"catch exception at {filename}: {lsd}")
+                for p in processes:
+                    p.terminate()
+                break
+            recon, lowpass, sr = results
+            n += 1
+            cumulated_lsd += (lsd - cumulated_lsd) / n
+            pbar.set_description(f"LSD: {lsd:.4f}, Avg LSD: {cumulated_lsd:.4f}")
+            pbar.update(1)
+
+            if args.out_dir is not None:
+                out_path = Path(args.out_dir) / filename.name
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                torchaudio.save(
+                    out_path,
+                    recon.cpu().unsqueeze(0),
+                    sample_rate=args.target_sr if args.target_sr is not None else sr,
+                )
+
+                out_path = Path(args.out_dir) / "inputs" / filename.name
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                torchaudio.save(out_path, lowpass.cpu(), sample_rate=sr // args.rate)
+
+    except KeyboardInterrupt:
+        print("Interrupted")
+    finally:
+        for p in processes:
+            p.join()
+
+    print(cumulated_lsd)
+
+
+def run_local(
+    args: argparse.Namespace,
+    model,
+    downsampler,
+    upsampler,
+    gamma,
+    steps,
+):
+    vctk_path = Path(args.vctk)
+    test_files = list(vctk_path.glob("**/*.wav"))
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    model = model.to(device)
+    evaluater = LSD().to(device)
+    downsampler = downsampler.to(device)
+    upsampler = upsampler.to(device)
+    gamma = gamma.to(device)
+    steps = steps.to(device)
+
+    n = 0
+    cumulated_lsd = 0
+    pbar = tqdm(test_files)
+
+    for filename in pbar:
+        _, lsd, recon, lowpass, sr = core_compute(
+            filename,
+            args.rate,
+            args.infer_type,
+            args.lr,
+            args.target_sr,
+            model,
+            evaluater,
+            downsampler,
+            upsampler,
+            gamma,
+            steps,
+        )
+
+        n += 1
+        cumulated_lsd += (lsd - cumulated_lsd) / n
+        pbar.set_description(f"LSD: {lsd:.4f}, Avg LSD: {cumulated_lsd:.4f}")
+        pbar.update(1)
+
+        if args.out_dir is not None:
+            out_path = Path(args.out_dir) / filename.name
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            torchaudio.save(
+                out_path,
+                recon.cpu().unsqueeze(0),
+                sample_rate=args.target_sr if args.target_sr is not None else sr,
+            )
+
+            out_path = Path(args.out_dir) / "inputs" / filename.name
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            torchaudio.save(out_path, lowpass.cpu(), sample_rate=sr // args.rate)
+
+    print(cumulated_lsd)
 
 
 if __name__ == "__main__":
@@ -673,8 +818,6 @@ if __name__ == "__main__":
     parser.add_argument("--target-sr", type=int, default=None)
 
     args = parser.parse_args()
-
-    set_start_method("spawn", force=True)
 
     gpus = torch.cuda.device_count()
 
@@ -752,85 +895,33 @@ if __name__ == "__main__":
         with torch.no_grad():
             gamma, steps = scheduler(t)
 
-    file_q = Queue()
-    result_q = Queue()
-    processes = []
+    if args.downsample_type == "sinc":
+        downsampler = Decimate(q=args.rate, **sinc_kwargs)
+        upsampler = Upsample(q=args.rate, **sinc_kwargs)
+    elif args.downsample_type == "cheby":
+        downsampler = ChebyDecimate(r=args.rate)
+        upsampler = ChebyUpsample(r=args.rate)
+    else:
+        downsampler = STFTDecimate(args.rate)
+        upsampler = Upsample(q=args.rate, **sinc_kwargs)
 
-    for i in range(gpus):
-        device = f"cuda:{i}"
-        evaluater = LSD()
-        if args.downsample_type == "sinc":
-            downsampler = Decimate(q=args.rate, **sinc_kwargs)
-            upsampler = Upsample(q=args.rate, **sinc_kwargs)
-        elif args.downsample_type == "cheby":
-            downsampler = ChebyDecimate(r=args.rate)
-            upsampler = ChebyUpsample(r=args.rate)
-        else:
-            downsampler = STFTDecimate(args.rate)
-            upsampler = Upsample(q=args.rate, **sinc_kwargs)
-
-        p = Process(
-            target=foo,
-            args=(
-                file_q,
-                result_q,
-                args.rate,
-                args.infer_type,
-                args.lr,
-                args.target_sr,
-                deepcopy(model).to(device),
-                evaluater.to(device),
-                downsampler.to(device),
-                upsampler.to(device),
-                gamma.to(device),
-                steps.to(device),
-            ),
+    if gpus > 1:
+        set_start_method("spawn", force=True)
+        run_distributed(
+            list(range(gpus)),
+            args,
+            model,
+            downsampler,
+            upsampler,
+            gamma,
+            steps,
         )
-        processes.append(p)
-
-    vctk_path = Path(args.vctk)
-    test_files = list(vctk_path.glob("**/*.wav"))
-
-    for filename in test_files:
-        file_q.put(filename)
-
-    for p in processes:
-        p.start()
-
-    pbar = tqdm(total=len(test_files))
-    n = 0
-    cumulated_lsd = 0
-    try:
-        while n < len(test_files):
-            filename, lsd, *results = result_q.get()
-            if isinstance(lsd, Exception):
-                print(f"catch exception at {filename}: {lsd}")
-                for p in processes:
-                    p.terminate()
-                break
-            recon, lowpass, sr = results
-            n += 1
-            cumulated_lsd += (lsd - cumulated_lsd) / n
-            pbar.set_description(f"LSD: {lsd:.4f}, Avg LSD: {cumulated_lsd:.4f}")
-            pbar.update(1)
-
-            if args.out_dir is not None:
-                out_path = Path(args.out_dir) / filename.name
-                out_path.parent.mkdir(parents=True, exist_ok=True)
-                torchaudio.save(
-                    out_path,
-                    recon.cpu().unsqueeze(0),
-                    sample_rate=args.target_sr if args.target_sr is not None else sr,
-                )
-
-                out_path = Path(args.out_dir) / "inputs" / filename.name
-                out_path.parent.mkdir(parents=True, exist_ok=True)
-                torchaudio.save(out_path, lowpass.cpu(), sample_rate=sr // args.rate)
-
-    except KeyboardInterrupt:
-        print("Interrupted")
-    finally:
-        for p in processes:
-            p.join()
-
-    print(cumulated_lsd)
+    else:
+        run_local(
+            args,
+            model,
+            downsampler,
+            upsampler,
+            gamma,
+            steps,
+        )
