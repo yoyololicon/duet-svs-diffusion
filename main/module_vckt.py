@@ -1,127 +1,72 @@
-from functools import reduce
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, List, Optional
 
-import eng_to_ipa
 import librosa
-import plotly.graph_objects as go
 import plotly.graph_objs as go
 import pytorch_lightning as pl
 import torch
 import torchaudio
 import wandb
-from a_transformers_pytorch.transformers import Transformer
 from audio_data_pytorch.utils import fractional_random_split
-from audio_diffusion_pytorch import AudioDiffusionConditional, Sampler, Schedule
+from audio_diffusion_pytorch import AudioDiffusionModel, Sampler, Schedule
 from einops import rearrange
+from ema_pytorch import EMA
 from pytorch_lightning import Callback, Trainer
 from pytorch_lightning.loggers import LoggerCollection, WandbLogger
-from torch import LongTensor, Tensor, nn
+from torch import Tensor, nn
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer
 
 """ Model """
-
-
-def phonemize(texts):
-    return [eng_to_ipa.convert(text) for text in texts]
 
 
 class Model(pl.LightningModule):
     def __init__(
         self,
         lr: float,
-        lr_eps: float,
         lr_beta1: float,
         lr_beta2: float,
+        lr_eps: float,
         lr_weight_decay: float,
-        encoder_tokenizer: str,
-        encoder_num_tokens: int,
-        encoder_features: int,
-        encoder_max_length: int,
-        encoder_num_layers: int,
-        encoder_head_features: int,
-        encoder_num_heads: int,
-        encoder_multiplier: int,
-        use_phonemizer: bool,
-        **kwargs,
+        ema_beta: float,
+        ema_power: float,
+        model: nn.Module,
     ):
         super().__init__()
         self.lr = lr
-        self.lr_eps = lr_eps
         self.lr_beta1 = lr_beta1
         self.lr_beta2 = lr_beta2
+        self.lr_eps = lr_eps
         self.lr_weight_decay = lr_weight_decay
-        self.max_length = encoder_max_length
-        self.use_phonemizer = use_phonemizer
-
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            pretrained_model_name_or_path=encoder_tokenizer
-        )
-
-        self.to_embedding = nn.Embedding(encoder_num_tokens, encoder_features)
-
-        self.encoder = Transformer(
-            features=encoder_features,
-            max_length=encoder_max_length,
-            num_layers=encoder_num_layers,
-            head_features=encoder_head_features,
-            num_heads=encoder_num_heads,
-            multiplier=encoder_multiplier,
-        )
-
-        self.model = AudioDiffusionConditional(
-            context_embedding_features=encoder_features, **kwargs
-        )
-
-    def forward(self, x: Tensor, embedding: Tensor) -> Tuple[Tensor, Tensor]:
-        return self.model(x, embedding=embedding)
-
-    def get_text_embedding(self, texts: List[str]) -> Tensor:
-        # Compute batch of tokens and mask from texts
-        encoded = self.tokenizer.batch_encode_plus(
-            phonemize(texts) if self.use_phonemizer else texts,
-            return_tensors="pt",
-            padding="max_length",
-            max_length=self.max_length,
-            truncation=True,
-        )
-        tokens = encoded["input_ids"].to(self.device)
-        mask = encoded["attention_mask"].to(self.device).bool()
-        # Compute embedding
-        embedding = self.to_embedding(tokens)
-        # Encode with transformer
-        embedding_encoded = self.encoder(embedding, mask=mask)
-        return embedding_encoded
-
-    def training_step(self, batch, batch_idx):
-        waveforms, info = batch
-        text = info["text"]
-        embedding = self.get_text_embedding(text)
-        loss = self(waveforms, embedding)
-        self.log("train_loss", loss)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        waveforms, info = batch
-        text = info["text"]
-        embedding = self.get_text_embedding(text)
-        loss = self(waveforms, embedding)
-        self.log("valid_loss", loss)
-        return loss
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
-            list(self.parameters()),
-            lr=self.lr,
-            betas=(self.lr_beta1, self.lr_beta2),
-            eps=self.lr_eps,
-            # weight_decay=self.lr_weight_decay,
-        )
-        return optimizer
+        self.model = model
+        self.model_ema = EMA(self.model, beta=ema_beta, power=ema_power)
 
     @property
     def device(self):
-        return next(self.parameters()).device
+        return next(self.model.parameters()).device
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(
+            list(self.model.parameters()),
+            lr=self.lr,
+            betas=(self.lr_beta1, self.lr_beta2),
+            eps=self.lr_eps,
+            weight_decay=self.lr_weight_decay,
+        )
+        return optimizer
+
+    def training_step(self, batch, batch_idx):
+        waveforms = batch
+        loss = self.model(waveforms)
+        self.log("train_loss", loss)
+        # Update EMA model and log decay
+        self.model_ema.update()
+        self.log("ema_decay", self.model_ema.get_current_decay())
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        waveforms = batch
+        loss = self.model_ema(waveforms)
+        self.log("valid_loss", loss)
+        return loss
 
 
 """ Datamodule """
@@ -131,6 +76,7 @@ class Datamodule(pl.LightningDataModule):
     def __init__(
         self,
         dataset,
+        collate_fn,
         *,
         val_split: float,
         batch_size: int,
@@ -140,6 +86,7 @@ class Datamodule(pl.LightningDataModule):
     ) -> None:
         super().__init__()
         self.dataset = dataset
+        self.collate_fn = collate_fn
         self.val_split = val_split
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -154,6 +101,7 @@ class Datamodule(pl.LightningDataModule):
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.data_train,
+            collate_fn=self.collate_fn,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
@@ -163,6 +111,7 @@ class Datamodule(pl.LightningDataModule):
     def val_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.data_val,
+            collate_fn=self.collate_fn,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
@@ -248,21 +197,18 @@ class SampleLogger(Callback):
         sampling_rate: int,
         length: int,
         sampling_steps: List[int],
-        embedding_scale: float,
         diffusion_schedule: Schedule,
         diffusion_sampler: Sampler,
+        use_ema_model: bool,
     ) -> None:
         self.num_items = num_items
         self.channels = channels
         self.sampling_rate = sampling_rate
         self.length = length
         self.sampling_steps = sampling_steps
-        self.epoch_count = 0
-        self.embedding_scale = embedding_scale
-
         self.diffusion_schedule = diffusion_schedule
         self.diffusion_sampler = diffusion_sampler
-
+        self.use_ema_model = use_ema_model
         self.log_next = False
 
     def on_validation_epoch_start(self, trainer, pl_module):
@@ -282,55 +228,33 @@ class SampleLogger(Callback):
             pl_module.eval()
 
         wandb_logger = get_wandb_logger(trainer).experiment
-        model = pl_module.model
 
-        waveform, info = batch
-        waveform = waveform[0 : self.num_items]
+        diffusion_model = pl_module.model
+        if self.use_ema_model:
+            diffusion_model = pl_module.model_ema.ema_model
 
-        log_wandb_audio_batch(
-            logger=wandb_logger,
-            id="true",
-            samples=waveform,
-            sampling_rate=self.sampling_rate,
-        )
-        log_wandb_audio_spectrogram(
-            logger=wandb_logger,
-            id="true",
-            samples=waveform,
-            sampling_rate=self.sampling_rate,
-        )
-
-        texts = info["text"][0 : self.num_items]
-
-        # text_table = wandb.Table(columns=["text"])
-        # text_table.add_data(texts)
-        # wandb_logger.log({"text": text_table})
-
+        # Get start diffusion noise
         noise = torch.randn(
             (self.num_items, self.channels, self.length), device=pl_module.device
         )
-        embedding = pl_module.get_text_embedding(texts)
 
         for steps in self.sampling_steps:
-
-            samples = model.sample(
-                noise,
-                embedding=embedding,
-                embedding_scale=self.embedding_scale,
+            samples = diffusion_model.sample(
+                noise=noise,
                 sampler=self.diffusion_sampler,
                 sigma_schedule=self.diffusion_schedule,
                 num_steps=steps,
             )
             log_wandb_audio_batch(
                 logger=wandb_logger,
-                id="recon",
+                id="sample",
                 samples=samples,
                 sampling_rate=self.sampling_rate,
                 caption=f"Sampled in {steps} steps",
             )
             log_wandb_audio_spectrogram(
                 logger=wandb_logger,
-                id="recon",
+                id="sample",
                 samples=samples,
                 sampling_rate=self.sampling_rate,
                 caption=f"Sampled in {steps} steps",

@@ -1,60 +1,59 @@
 # @package _global_
 
-# To execute this experiment on a single GPU run:
-# python train.py exp=diff_mae_0 trainer.gpus=1 +datamodule.dataset.path=/your_wav_path_here
+# To pick dataset path execute with: ++datamodule.dataset.path=/your_wav_root/
 
-sampling_rate: 48000
-length: 131072
-channels: 2
+sampling_rate: 22050
+length: 32768
+channels: 1
 log_every_n_steps: 1000
 
 model:
-  _target_: main.module_diff_mae.Model
+  _target_: main.module_vckt.Model
   lr: 1e-4
   lr_beta1: 0.95
   lr_beta2: 0.999
   lr_eps: 1e-6
   lr_weight_decay: 1e-3
-  ema_beta: 0.995
+  ema_beta: 0.9999
   ema_power: 0.7
 
   model:
-    _target_: audio_diffusion_pytorch.DiffusionMAE1d
+    _target_: audio_diffusion_pytorch.AudioDiffusionModel
     in_channels: ${channels}
-    channels: 512
-    multipliers: [3, 2, 1, 1, 1, 1, 1, 1]
-    factors: [1, 2, 2, 2, 2, 2, 2]
-    num_blocks: [1, 1, 1, 2, 2, 2, 2]
-    attentions: [0, 0, 0, 0, 0, 0, 0]
-    encoder_inject_depth: 3
-    encoder_channels: 32
-    encoder_factors: [1, 1, 2, 2, 1, 1]
-    encoder_multipliers: [32, 16, 8, 8, 4, 2, 1]
-    encoder_num_blocks: [4, 4, 4, 4, 4, 4]
-    bottleneck:
-      - _target_: audio_encoders_pytorch.TanhBottleneck
-    stft_use_complex: True
-    stft_num_fft: 1023
-    stft_hop_length: 256
+    channels: 128
+    patch_size: 16
+    resnet_groups: 8
+    kernel_multiplier_downsample: 2
+    multipliers: [1, 2, 4, 4, 4, 4, 4]
+    factors: [2, 2, 2, 2, 2, 2]
+    num_blocks: [2, 2, 2, 2, 2, 2]
+    attentions: [0, 0, 0, 1, 1, 1, 1]
+    attention_heads: 8
+    attention_features: 64
+    attention_multiplier: 2
+    use_nearest_upsample: False
+    use_skip_scale: True
     diffusion_type: v
     diffusion_sigma_distribution:
       _target_: audio_diffusion_pytorch.UniformDistribution
 
 
 datamodule:
-  _target_: main.module_diff_mae.Datamodule
+  _target_: main.module_vckt.Datamodule
   dataset:
-    _target_: audio_data_pytorch.WAVDataset
-    recursive: True
-    sample_rate: ${sampling_rate}
-    transforms:
-      _target_: audio_data_pytorch.AllTransform
-      random_crop_size: ${length}
-      stereo: True
-  val_split: 0.0001
-  batch_size: 24
-  num_workers: 8
-  pin_memory: True
+    _target_: torchaudio.datasets.vctk.VCTK_092
+    root: null
+    download: True
+
+  collate_fn:
+    _target_: main.dataset.vctk_collate
+    target_rate:  ${sampling_rate}
+    length: ${length}
+
+  val_split: 0.01
+  batch_size: 4
+  num_workers: 0
+  pin_memory: False
 
 callbacks:
   rich_progress_bar:
@@ -75,12 +74,13 @@ callbacks:
     max_depth: 2
 
   audio_samples_logger:
-    _target_: main.module_diff_mae.SampleLogger
-    num_items: 3
+    _target_: main.module_base.SampleLogger
+    num_items: 4
     channels: ${channels}
     sampling_rate: ${sampling_rate}
-    sampling_steps: [3,5,10,25,50,100]
-    use_ema_model: False
+    length: ${length}
+    sampling_steps: [3]
+    use_ema_model: True
     diffusion_sampler:
       _target_: audio_diffusion_pytorch.VSampler
     diffusion_schedule:
