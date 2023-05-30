@@ -50,9 +50,9 @@ datamodule:
     length: ${length}
 
   val_split: 0.01
-  batch_size: 4
-  num_workers: 0
-  pin_memory: False
+  batch_size: 192
+  num_workers: 8
+  pin_memory: True
 
 callbacks:
   rich_progress_bar:
