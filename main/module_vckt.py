@@ -9,7 +9,7 @@ import wandb
 from audio_data_pytorch.utils import fractional_random_split
 from audio_diffusion_pytorch import AudioDiffusionModel, Sampler, Schedule
 from einops import rearrange
-from ema_pytorch import EMA
+# from ema_pytorch import EMA
 from pytorch_lightning import Callback, Trainer
 from pytorch_lightning.loggers import LoggerCollection, WandbLogger
 from torch import Tensor, nn
@@ -26,8 +26,8 @@ class Model(pl.LightningModule):
         lr_beta2: float,
         lr_eps: float,
         lr_weight_decay: float,
-        ema_beta: float,
-        ema_power: float,
+       #  ema_beta: float,
+       #  ema_power: float,
         model: nn.Module,
     ):
         super().__init__()
@@ -37,7 +37,7 @@ class Model(pl.LightningModule):
         self.lr_eps = lr_eps
         self.lr_weight_decay = lr_weight_decay
         self.model = model
-        self.model_ema = EMA(self.model, beta=ema_beta, power=ema_power)
+        # self.model_ema = EMA(self.model, beta=ema_beta, power=ema_power)
 
     @property
     def device(self):
@@ -58,13 +58,13 @@ class Model(pl.LightningModule):
         loss = self.model(waveforms)
         self.log("train_loss", loss)
         # Update EMA model and log decay
-        self.model_ema.update()
-        self.log("ema_decay", self.model_ema.get_current_decay())
+        # self.model_ema.update()
+        # self.log("ema_decay", self.model_ema.get_current_decay())
         return loss
 
     def validation_step(self, batch, batch_idx):
         waveforms = batch
-        loss = self.model_ema(waveforms)
+        loss = self.model(waveforms)
         self.log("valid_loss", loss)
         return loss
 
@@ -199,7 +199,7 @@ class SampleLogger(Callback):
         sampling_steps: List[int],
         diffusion_schedule: Schedule,
         diffusion_sampler: Sampler,
-        use_ema_model: bool,
+        # use_ema_model: bool,
     ) -> None:
         self.num_items = num_items
         self.channels = channels
@@ -208,7 +208,7 @@ class SampleLogger(Callback):
         self.sampling_steps = sampling_steps
         self.diffusion_schedule = diffusion_schedule
         self.diffusion_sampler = diffusion_sampler
-        self.use_ema_model = use_ema_model
+        # self.use_aa_model = use_ema_model
         self.log_next = False
 
     def on_validation_epoch_start(self, trainer, pl_module):
@@ -230,8 +230,8 @@ class SampleLogger(Callback):
         wandb_logger = get_wandb_logger(trainer).experiment
 
         diffusion_model = pl_module.model
-        if self.use_ema_model:
-            diffusion_model = pl_module.model_ema.ema_model
+        # if self.use_ema_model:
+        #    diffusion_model = pl_module.model_ema.ema_model
 
         # Get start diffusion noise
         noise = torch.randn(
