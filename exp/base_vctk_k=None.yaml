@@ -53,6 +53,7 @@ datamodule:
     _partial_: True
     target_rate:  ${sampling_rate}
     length: ${length}
+    mix_k: null
 
   val_split: 0.01
   batch_size: 32
