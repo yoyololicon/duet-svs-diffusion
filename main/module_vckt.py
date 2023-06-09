@@ -105,6 +105,7 @@ class Datamodule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
+            drop_last=True,
             shuffle=True,
         )
 
@@ -115,6 +116,7 @@ class Datamodule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
+            drop_last=True,
             shuffle=True,
         )
 
