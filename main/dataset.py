@@ -10,7 +10,7 @@ from torchaudio.functional import resample
 
 def vctk_collate(batch,
                  target_rate=22050,
-                 length=32768,
+                 length=131072,
                  mix_k = None):
     def pad_tensor(t):
         current_length = t.shape[1]
