@@ -112,7 +112,7 @@ def log_hyperparameters(
     datamodule: pl.LightningDataModule,
     trainer: pl.Trainer,
     callbacks: List[pl.Callback],
-    logger: List[pl.loggers.LightningLoggerBase],
+    logger: List[pl.loggers.Logger],
 ) -> None:
     """Controls which config parts are saved by Lightning loggers.
     Additionaly saves:
@@ -156,7 +156,7 @@ def finish(
     datamodule: pl.LightningDataModule,
     trainer: pl.Trainer,
     callbacks: List[pl.Callback],
-    logger: List[pl.loggers.LightningLoggerBase],
+    logger: List[pl.loggers.Logger],
 ) -> None:
     """Makes sure everything closed properly."""
 
