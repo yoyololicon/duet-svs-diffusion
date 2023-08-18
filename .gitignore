@@ -9,3 +9,4 @@ logs/
 data/
 train.log
 .idea/
+.vscode/
