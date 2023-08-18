@@ -88,7 +88,7 @@ def separate_mixture(
         sigmas: torch.Tensor,
         noises: Optional[torch.Tensor],
         differential_fn: Callable = differential_with_dirac,
-        s_churn: float = 40.0,  # > 0 to add randomness
+        s_churn: float = 20.0,  # > 0 to add randomness
         num_resamples: int = 2,
         use_tqdm: bool = False,
 ):
@@ -131,6 +131,7 @@ def save_separation(
 if __name__ == '__main__':
 
     pl.seed_everything(12345)
+    import torchmetrics
 
     with hydra.initialize(config_path=".."):
         cfg = hydra.compose(config_name="exp/base_vctk_k_none.yaml")
@@ -140,8 +141,8 @@ if __name__ == '__main__':
                                   map_location='cuda')
     model.load_state_dict(vctk_checkpoint['state_dict'])
     diffusion_schedule = hydra.utils.instantiate(cfg['callbacks']['audio_samples_logger']['diffusion_schedule']).cuda()
-    separator = WeaklyMSDMSeparator(stem_to_model = {"voice_1": model.cuda(),
-                                                     "voice_2": model.cuda()},
+    separator = WeaklyMSDMSeparator(stem_to_model = {"separated_0": model.cuda(),
+                                                     "separated_1": model.cuda()},
                                     sigma_schedule=diffusion_schedule,
                                     use_tqdm=True)
 
@@ -156,6 +157,9 @@ if __name__ == '__main__':
                             shuffle=False,
                             collate_fn=partial(vctk_collate, mix_k=None))
     data_iter = iter(dataloader)
+    _ = next(data_iter)
+    _ = next(data_iter)
+    _ = next(data_iter)
     _ = next(data_iter)
     _ = next(data_iter)
     batch = next(data_iter)
