@@ -7,6 +7,12 @@ import torch
 from torch.utils.data import Dataset
 import librosa
 
+exclude_duet = {
+    "CatMartino_IPromise",
+    "TleilaxEnsemble_Late",
+    "TleilaxEnsemble_MelancholyFlowers",
+}
+
 
 class MedleyVox(Dataset):
     """Dataset class for MedleyVox source separation tasks.
@@ -45,6 +51,17 @@ class MedleyVox(Dataset):
             self.total_segments_list = glob.glob(f"{self.root_dir}/unison/*/*")
         elif self.task == "duet":
             self.total_segments_list = glob.glob(f"{self.root_dir}/duet/*/*")
+            total_segments_list = list(
+                filter(
+                    lambda x: x.split("/")[-2] not in exclude_duet,
+                    self.total_segments_list,
+                )
+            )
+            print(
+                f"Drop {len(self.total_segments_list) - len(total_segments_list)} duet songs."
+            )
+            self.total_segments_list = total_segments_list
+
         elif self.task == "main_vs_rest":
             self.total_segments_list = glob.glob(f"{self.root_dir}/rest/*/*")
         elif self.task == "n_singing":
