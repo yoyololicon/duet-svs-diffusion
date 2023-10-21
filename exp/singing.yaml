@@ -5,7 +5,7 @@
 sampling_rate: 24000
 length: 131072
 channels: 1
-log_every_n_steps: 10000
+log_every_n_steps: 3000
 overlap: 65536
 
 model:
@@ -51,34 +51,50 @@ datamodule:
         data_dir: /import/c4dm-datasets-ext/m4singer-24k/
         segment: ${length}
         overlap: ${overlap}
+        mono: True
+        keepdim: True
       - _target_: datasets.wav.WAVDataset
         data_dir: /import/c4dm-datasets-ext/ycy_artefacts/OpenCPOP-24k/
         segment: ${length}
         overlap: ${overlap}
+        mono: True
+        keepdim: True
       - _target_: datasets.wav.WAVDataset
         data_dir: /import/c4dm-datasets-ext/ycy_artefacts/VocalSet-24k/
         segment: ${length}
         overlap: ${overlap}
+        mono: True
+        keepdim: True
       - _target_: datasets.wav.WAVDataset
         data_dir: /import/c4dm-datasets-ext/ycy_artefacts/OpenSinger-24k/
         segment: ${length}
         overlap: ${overlap}
+        mono: True
+        keepdim: True
       - _target_: datasets.wav.WAVDataset
         data_dir: /import/c4dm-datasets-ext/jvs_music_ver1/
         segment: ${length}
         overlap: ${overlap}
+        mono: True
+        keepdim: True
       - _target_: datasets.wav.WAVDataset
         data_dir: /import/c4dm-datasets-ext/ycy_artefacts/CSD-24k/
         segment: ${length}
         overlap: ${overlap}
+        mono: True
+        keepdim: True
       - _target_: datasets.wav.WAVDataset
         data_dir: /import/c4dm-datasets-ext/ycy_artefacts/NUS-24k/
         segment: ${length}
         overlap: ${overlap}
+        mono: True
+        keepdim: True
       - _target_: datasets.wav.WAVDataset
         data_dir: /import/c4dm-datasets-ext/ycy_artefacts/PJS-24k/
         segment: ${length}
         overlap: ${overlap}
+        mono: True
+        keepdim: True
 
 
   collate_fn: null
