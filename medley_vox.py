@@ -41,6 +41,7 @@ class MedleyVox(Dataset):
         n_src=2,
         segment=None,
         return_id=True,
+        drop_duet=False,
     ):
         self.root_dir = root_dir  # /path/to/data/test_medleyDB
         self.metadata_dir = metadata_dir  # ./testset/testset_config
@@ -51,15 +52,16 @@ class MedleyVox(Dataset):
             self.total_segments_list = glob.glob(f"{self.root_dir}/unison/*/*")
         elif self.task == "duet":
             self.total_segments_list = glob.glob(f"{self.root_dir}/duet/*/*")
-            total_segments_list = list(
-                filter(
-                    lambda x: x.split("/")[-2] not in exclude_duet,
-                    self.total_segments_list,
+            if drop_duet:
+                total_segments_list = list(
+                    filter(
+                        lambda x: x.split("/")[-2] not in exclude_duet,
+                        self.total_segments_list,
+                    )
                 )
-            )
-            print(
-                f"Drop {len(self.total_segments_list) - len(total_segments_list)} duet songs."
-            )
+                print(
+                    f"Drop {len(self.total_segments_list) - len(total_segments_list)} duet songs."
+                )
             self.total_segments_list = total_segments_list
 
         elif self.task == "main_vs_rest":
