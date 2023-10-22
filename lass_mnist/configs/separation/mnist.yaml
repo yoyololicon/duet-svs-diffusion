@@ -1,0 +1,15 @@
+defaults:
+  - base_separation
+  - override /dataset: test_mnist
+  - override /vqvae: mnist_256
+  - override /autoregressive: mnist_256
+  - override /separation_method: general
+
+checkpoints:
+  vqvae: checkpoints/vqvae/256-sigmoid-big.pt
+  autoregressive: checkpoints/unconditioned/256-sigmoid-big.pt
+  sums: checkpoints/sum/256-sigmoid-big.pt
+
+batch_size: 64
+latent_length: 7
+vocab_size: 256

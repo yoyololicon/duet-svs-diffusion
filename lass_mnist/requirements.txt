@@ -1,0 +1,7 @@
+matplotlib
+tqdm
+typer==0.4.*
+transformers==4.20.*
+wandb==0.12.*
+hydra-core==1.2.0
+torchmetrics

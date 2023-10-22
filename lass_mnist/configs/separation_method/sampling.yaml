@@ -1,0 +1,4 @@
+_target_: diba.fast_sampled_separation
+_partial_: True
+num_samples: 256
+temperature: 1.0

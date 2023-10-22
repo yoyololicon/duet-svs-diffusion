@@ -1,0 +1,14 @@
+name: lass_audio
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.8.5
+  - pytorch==1.7.1
+  - torchaudio==0.7.2
+  - cudatoolkit>=11.0
+  - pip
+  - pip:
+      - -r requirements.txt
+      - ../diba
+

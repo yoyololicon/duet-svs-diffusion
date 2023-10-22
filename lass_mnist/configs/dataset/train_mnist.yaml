@@ -1,0 +1,6 @@
+_target_: torchvision.datasets.MNIST
+root: "data/MNIST"
+transform:
+  _target_: torchvision.transforms.ToTensor
+train: true
+download: true

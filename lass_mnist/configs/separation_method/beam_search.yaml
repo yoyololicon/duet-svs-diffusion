@@ -1,0 +1,12 @@
+#_target_: diba.fast_beamsearch_separation
+#_partial_: True
+#num_beams: 256
+#temperature: 1.0
+_target_: diba.separate
+_partial_: True
+do_sample: null
+num_beams: 128
+num_beams_groups: null
+num_return_sequences: null
+top_k: null
+top_p: null

@@ -1,0 +1,14 @@
+name: lass_mnist
+channels:
+  - pytorch-lts
+  - nvidia
+dependencies:
+  - python=3.8.5
+  - pytorch==1.11.0
+  - cudatoolkit=11.1
+  - torchvision==0.12.0
+  - pip
+  - pip:
+      - -r requirements.txt
+      - -e ../diba
+

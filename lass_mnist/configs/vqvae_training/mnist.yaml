@@ -1,0 +1,11 @@
+defaults:
+  - base_vqvae_training
+  - override /dataset@train_dataset: train_mnist
+  - override /dataset@test_dataset: test_mnist
+  - override /vqvae: mnist
+
+batch_size: 64
+num_epochs: 500
+lr: 1e-4
+output_folder: "vqvae-MNIST"
+

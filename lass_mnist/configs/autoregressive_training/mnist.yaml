@@ -1,0 +1,13 @@
+defaults:
+  - base_autoregressive_training
+  - override /dataset@train_dataset: train_mnist
+  - override /dataset@test_dataset: test_mnist
+  - override /vqvae: mnist_256
+  - override /autoregressive: mnist_256
+
+batch_size: 128
+latent_length: 7
+vocab_size: 256
+num_epochs: 500
+lr: 2e-4
+output_folder: "autoregressive-MNIST"

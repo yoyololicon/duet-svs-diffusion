@@ -1,0 +1,8 @@
+defaults:
+  - base_sums_estimation
+  - override /dataset@train_dataset: train_mnist
+  - override /dataset@test_dataset: test_mnist
+  - override /vqvae: mnist_256
+
+output_folder: "sums-MNIST"
+num_codes: 256

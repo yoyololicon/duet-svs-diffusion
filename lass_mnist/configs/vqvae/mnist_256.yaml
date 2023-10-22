@@ -1,0 +1,4 @@
+_target_: modules.VectorQuantizedVAE
+input_dim: 1
+dim: 128
+K: 256
