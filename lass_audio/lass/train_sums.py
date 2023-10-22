@@ -254,7 +254,7 @@ if __name__ == "__main__":
             # commit=args.pop("commit"),
             restore_vqvae=vqvae_path,
             # data hps
-            sample_length=int(sl * sr),
+            sample_length=int(sl * 44100),
             audio_files_dir=audio_files_dir,
             labels=False,
             aug_shift=True,

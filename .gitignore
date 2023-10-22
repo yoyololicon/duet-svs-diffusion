@@ -137,4 +137,4 @@ dmypy.json
 */checkpoints/*
 */data/*
 !.gitkeep
-lass_audio/learn_likelihood.sh
+lass_audio/*.sh
