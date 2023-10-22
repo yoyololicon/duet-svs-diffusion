@@ -84,27 +84,27 @@ def estimate_distribution(
     vqvae = make_vqvae(hps, device)
     # audio_dataset = # FilesAudioDataset(hps)
 
-    # ds0 = WAVDataset(data_dir="/import/c4dm-datasets-ext/m4singer-24k/",
-    #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-    # ds1 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/OpenCPOP-24k/",
-    #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-    # ds2 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/VocalSet-24k/",
-    #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-    # ds3 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/OpenSinger-24k/",
-    #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-    # ds4 = WAVDataset(data_dir="/import/c4dm-datasets-ext/jvs_music_ver1/",
-    #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-    # ds5 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/CSD-24k/",
-    #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-    # ds6 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/NUS-24k/",
-    #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-    # ds7 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/PJS-24k/",
-    #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-    # audio_ds = torch.utils.data.ConcatDataset(datasets=[ds0, ds1, ds2, ds3, ds4, ds5, ds6, ds7])
-
-    ds0 = WAVDataset(data_dir="/home/emilian/PycharmProjects/multi-speaker-diff-sep/lass_audio/data/OpenSinger-24k",
+    ds0 = WAVDataset(data_dir="/import/c4dm-datasets-ext/m4singer-24k/",
                      segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-    audio_ds = torch.utils.data.ConcatDataset(datasets=[ds0])
+    ds1 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/OpenCPOP-24k/",
+                     segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+    ds2 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/VocalSet-24k/",
+                     segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+    ds3 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/OpenSinger-24k/",
+                     segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+    ds4 = WAVDataset(data_dir="/import/c4dm-datasets-ext/jvs_music_ver1/",
+                     segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+    ds5 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/CSD-24k/",
+                     segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+    ds6 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/NUS-24k/",
+                     segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+    ds7 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/PJS-24k/",
+                     segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+    audio_ds = torch.utils.data.ConcatDataset(datasets=[ds0, ds1, ds2, ds3, ds4, ds5, ds6, ds7])
+
+    # ds0 = WAVDataset(data_dir="/home/emilian/PycharmProjects/multi-speaker-diff-sep/lass_audio/data/OpenSinger-24k",
+    #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+    # audio_ds = torch.utils.data.ConcatDataset(datasets=[ds0])
     # prepare data-loader
     dataset_loader = DataLoader(
         audio_ds,
