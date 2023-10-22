@@ -109,8 +109,8 @@ def estimate_distribution(
     dataset_loader = DataLoader(
         audio_ds,
         batch_size=batch_size,
-        num_workers=0,
-        pin_memory=False,
+        num_workers=8,
+        pin_memory=True,
         shuffle=True,
         drop_last=True#,
         # collate_fn=lambda batch: torch.stack([torch.from_numpy(b) for b in batch], 0),
