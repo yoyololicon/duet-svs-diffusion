@@ -6,7 +6,7 @@ from typing import Sequence, Tuple, Union
 import numpy as np
 import sparse
 import torch
-from jukebox.data.files_dataset import FilesAudioDataset
+import torchaudio
 from jukebox.hparams import Hyperparams, setup_hparams
 from jukebox.make_models import make_vqvae
 from jukebox.utils.audio_utils import audio_preprocess
@@ -15,6 +15,10 @@ from jukebox.vqvae.vqvae import VQVAE
 from lass.utils import ROOT_DIRECTORY
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+
+from data_audio.wav import WAVDataset
+
+torchaudio.set_audio_backend('sox_io')
 
 
 def load_checkpoint(checkpoint_path: Union[Path, str]) -> Tuple[sparse.COO, int]:
@@ -67,6 +71,7 @@ def estimate_distribution(
     """
 
     def compute_latent(x: torch.Tensor, vqvae: VQVAE, level: int) -> Sequence[int]:
+        x = x.permute(0, 2, 1)
         z = vqvae.encode(x, start_level=level, end_level=level+1, bs_chunks=1)[0].cpu().numpy()
         return np.reshape(z, newshape=-1, order="F").tolist()
 
@@ -77,17 +82,24 @@ def estimate_distribution(
 
     # instantiate the vqvae model and audio dataset
     vqvae = make_vqvae(hps, device)
-    audio_dataset = FilesAudioDataset(hps)
+    # audio_dataset = # FilesAudioDataset(hps)
+    ds0 = WAVDataset(data_dir="/home/emilian/PycharmProjects/multi-speaker-diff-sep/lass_audio/data/OpenSinger-24k/",
+                     segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+    ds1 = WAVDataset(data_dir="/home/emilian/PycharmProjects/multi-speaker-diff-sep/lass_audio/data/m4singer/",
+                     segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+    ds2 = WAVDataset(data_dir="/home/emilian/PycharmProjects/multi-speaker-diff-sep/lass_audio/data/VocalSet-24k/",
+                     segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+    audio_ds = torch.utils.data.ConcatDataset(datasets=[ds0, ds1, ds2])
 
     # prepare data-loader
     dataset_loader = DataLoader(
-        audio_dataset,
+        audio_ds,
         batch_size=batch_size,
-        num_workers=8,
+        num_workers=0,
         pin_memory=False,
         shuffle=True,
-        drop_last=True,
-        collate_fn=lambda batch: torch.stack([torch.from_numpy(b) for b in batch], 0),
+        drop_last=True#,
+        # collate_fn=lambda batch: torch.stack([torch.from_numpy(b) for b in batch], 0),
     )
 
     # VQ-VAE arithmetic statistics generation
@@ -108,8 +120,8 @@ def estimate_distribution(
     with torch.no_grad():
         for epoch in range(epochs):
             for batch_idx, batch in enumerate(tqdm(dataset_loader)):
-                x = audio_preprocess(batch, hps=hps)
-
+                # x = audio_preprocess(batch, hps=hps)
+                x = batch
                 # get tracks from batch
                 x_1 = x[: batch_size // 2].to(device)
                 x_2 = x[batch_size // 2 :].to(device)
@@ -190,7 +202,7 @@ if __name__ == "__main__":
         metavar=("ALPHA_1", "ALPHA_2"),
     )
 
-    parser.add_argument("--batch-size", type=int, help="Batch size", default=8)
+    parser.add_argument("--batch-size", type=int, help="Batch size", default=64)
     parser.add_argument(
         "--save-iters",
         type=int,
@@ -226,7 +238,7 @@ if __name__ == "__main__":
         "vqvae",
         dict(
             # vqvae hps
-            # l_bins=args["latent_bins"],
+            # l_bins=2048,#args["latent_bins"],
             # downs_t=args.pop("downs_t"),
             sr=sr,
             # commit=args.pop("commit"),
@@ -234,7 +246,6 @@ if __name__ == "__main__":
             # data hps
             sample_length=int(sl * sr),
             audio_files_dir=audio_files_dir,
-            min_duration=0.01,  # add a small epsilon
             labels=False,
             aug_shift=True,
             aug_blend=True,
