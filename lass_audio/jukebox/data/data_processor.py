@@ -27,23 +27,24 @@ class OffsetDataset(Dataset):
 class DataProcessor():
     def __init__(self, hps):
         # self.dataset = # FilesAudioDataset(hps)
-        ds0 = WAVDataset(data_dir="/import/c4dm-datasets-ext/m4singer-24k/",
-                         segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-        ds1 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/OpenCPOP-24k/",
-                         segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+        # ds0 = WAVDataset(data_dir="/import/c4dm-datasets-ext/m4singer-24k/",
+        #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+        # ds1 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/OpenCPOP-24k/",
+        #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
         ds2 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/VocalSet-24k/",
                          segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-        ds3 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/OpenSinger-24k/",
-                         segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-        ds4 = WAVDataset(data_dir="/import/c4dm-datasets-ext/jvs_music_ver1/",
-                         segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-        ds5 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/CSD-24k/",
-                         segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-        ds6 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/NUS-24k/",
-                         segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-        ds7 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/PJS-24k/",
-                         segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
-        self.dataset = torch.utils.data.ConcatDataset(datasets=[ds0, ds1, ds2, ds3, ds4, ds5, ds6, ds7])
+        # ds3 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/OpenSinger-24k/",
+        #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+        # ds4 = WAVDataset(data_dir="/import/c4dm-datasets-ext/jvs_music_ver1/",
+        #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+        # ds5 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/CSD-24k/",
+        #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+        # ds6 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/NUS-24k/",
+        #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+        # ds7 = WAVDataset(data_dir="/import/c4dm-datasets-ext/ycy_artefacts/PJS-24k/",
+        #                  segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+        # self.dataset = torch.utils.data.ConcatDataset(datasets=[ds0, ds1, ds2, ds3, ds4, ds5, ds6, ds7])
+        self.dataset = torch.utils.data.ConcatDataset(datasets=[ds2])
         duration = 1 if hps.prior else 600
         hps.bandwidth = calculate_bandwidth(self.dataset, hps, duration=duration, sr=44100)
         self.create_datasets(hps)
