@@ -49,10 +49,16 @@ class VQVAE(nn.Module):
         x_shape, x_channels = input_shape[:-1], input_shape[-1]
         self.x_shape = x_shape
 
+        # print(f"{x_shape = }")
+        # print(f"{x_channels = }")
         self.downsamples = calculate_strides(strides_t, downs_t)
+        # print(f"{self.downsamples = }")
         self.hop_lengths = np.cumprod(self.downsamples)
+        # print(f"{self.hop_lengths = }")
         self.z_shapes = z_shapes = [(x_shape[0] // self.hop_lengths[level],) for level in range(levels)]
+        # print(f"{self.z_shapes = }")
         self.levels = levels
+        # print(f"{self.levels = }")
 
         if multipliers is None:
             self.multipliers = [1] * levels

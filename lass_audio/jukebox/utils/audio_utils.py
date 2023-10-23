@@ -19,9 +19,9 @@ class STFTValues:
         self.hop_length = hop_length
         self.window_size = window_size
 
-def calculate_bandwidth(dataset, hps, duration=600):
+def calculate_bandwidth(dataset, hps, duration=600, sr=44100):
     hps = DefaultSTFTValues(hps)
-    n_samples = int(dataset.sr * duration)
+    n_samples = int(sr * duration)
     l1, total, total_sq, n_seen, idx = 0.0, 0.0, 0.0, 0.0, dist.get_rank()
     spec_norm_total, spec_nelem = 0.0, 0.0
     while n_seen < n_samples:

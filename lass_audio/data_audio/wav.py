@@ -74,9 +74,11 @@ class WAVDataset(Dataset):
         if self.resample is not None:
             x = self.resample_transform(x)
 
-        return (lambda x: x.squeeze(0) if not self.keepdim else x)(
+        x = (lambda x: x.squeeze(0) if not self.keepdim else x)(
             (lambda x: x.mean(0, keepdim=True) if self.mono else x)(x)
-        )
+        ).permute(1, 0).numpy()
+        # print(f"{x.shape = }")
+        return x
 
 
 

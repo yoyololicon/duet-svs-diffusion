@@ -344,5 +344,6 @@ def run(hps="teeny", port=29500, **kwargs):
             if ema: ema.swap()
         dist.barrier()
 
+
 if __name__ == '__main__':
     fire.Fire(run)

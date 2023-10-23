@@ -138,3 +138,4 @@ dmypy.json
 */data/*
 !.gitkeep
 lass_audio/*.sh
+lass_audio/logs

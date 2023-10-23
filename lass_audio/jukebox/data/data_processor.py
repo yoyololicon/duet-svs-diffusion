@@ -1,3 +1,4 @@
+import torch
 import torch as t
 import jukebox.utils.dist_adapter as dist
 from torch.utils.data.distributed import DistributedSampler
@@ -6,26 +7,31 @@ from jukebox.utils.dist_utils import print_all
 from jukebox.utils.audio_utils import calculate_bandwidth
 from jukebox.data.files_dataset import FilesAudioDataset
 
+from data_audio.wav import WAVDataset
+
+
 class OffsetDataset(Dataset):
-    def __init__(self, dataset, start, end, test=False):
+    def __init__(self, dataset, start, end):
         super().__init__()
         self.dataset = dataset
         self.start = start
         self.end = end
-        self.test = test
         assert 0 <= self.start < self.end <= len(self.dataset)
 
     def __len__(self):
         return self.end - self.start
 
     def __getitem__(self, item):
-        return self.dataset.get_item(self.start + item, test=self.test)
+        return self.dataset.__getitem__(self.start + item)
 
 class DataProcessor():
     def __init__(self, hps):
-        self.dataset = FilesAudioDataset(hps)
+        # self.dataset = # FilesAudioDataset(hps)
+        ds0 = WAVDataset(data_dir="/home/emilian/PycharmProjects/multi-speaker-diff-sep/lass_audio/data/OpenSinger-24k",
+                         segment=131072, overlap=65536, keepdim=True, mono=True, resample=44100)
+        self.dataset = torch.utils.data.ConcatDataset(datasets=[ds0])
         duration = 1 if hps.prior else 600
-        hps.bandwidth = calculate_bandwidth(self.dataset, hps, duration=duration)
+        hps.bandwidth = calculate_bandwidth(self.dataset, hps, duration=duration, sr=44100)
         self.create_datasets(hps)
         self.create_samplers(hps)
         self.create_data_loaders(hps)
@@ -37,8 +43,8 @@ class DataProcessor():
 
     def create_datasets(self, hps):
         train_len = int(len(self.dataset) * hps.train_test_split)
-        self.train_dataset = OffsetDataset(self.dataset, 0, train_len, test=False)
-        self.test_dataset = OffsetDataset(self.dataset, train_len, len(self.dataset), test=True)
+        self.train_dataset = OffsetDataset(self.dataset, 0, train_len)
+        self.test_dataset = OffsetDataset(self.dataset, train_len, len(self.dataset))
 
     def create_samplers(self, hps):
         if not dist.is_available():

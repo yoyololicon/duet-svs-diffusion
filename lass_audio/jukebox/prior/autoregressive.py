@@ -143,7 +143,10 @@ class ConditionalAutoregressive2D(nn.Module):
             x[:,0] = y_cond.view(N, self.width)
         else:
             x[:,0] = self.start_token
-
+        # print(f"{self.input_shape = }")
+        # print(f"{self.x_emb_dropout(x).shape = }")
+        # print(f"{self.pos_emb_dropout(self.pos_emb()).shape = }")
+        # print(f"{x_cond.shape = }")
         x = self.x_emb_dropout(x) + self.pos_emb_dropout(self.pos_emb()) + x_cond # Pos emb and dropout
 
         x = self.transformer(x, encoder_kv=encoder_kv, fp16=fp16) # Transformer
