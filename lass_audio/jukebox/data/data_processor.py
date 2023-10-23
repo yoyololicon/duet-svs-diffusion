@@ -53,8 +53,9 @@ class DataProcessor():
         self.print_stats(hps)
 
     def set_epoch(self, epoch):
-        self.train_sampler.set_epoch(epoch)
-        self.test_sampler.set_epoch(epoch)
+        ...
+        # self.train_sampler.set_epoch(epoch)
+        # self.test_sampler.set_epoch(epoch)
 
     def create_datasets(self, hps):
         train_len = int(len(self.dataset) * hps.train_test_split)
@@ -84,5 +85,5 @@ class DataProcessor():
 
     def print_stats(self, hps):
         print_all(f"Train {len(self.train_dataset)} samples. Test {len(self.test_dataset)} samples")
-        print_all(f'Train sampler: {self.train_sampler}')
+        # print_all(f'Train sampler: {self.train_sampler}')
         print_all(f'Train loader: {len(self.train_loader)}')
