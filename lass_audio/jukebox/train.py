@@ -22,6 +22,8 @@ from jukebox.utils.fp16 import FP16FusedAdam, FusedAdam, LossScalar, clipped_gra
 from jukebox.data.data_processor import DataProcessor
 
 import torchaudio
+from tqdm import tqdm
+
 torchaudio.set_audio_backend('sox_io')
 
 def prepare_aud(x, hps):
@@ -211,7 +213,7 @@ def train(model, orig_model, opt, shd, scalar, ema, logger, metrics, data_proces
     else:
         _print_keys = dict(l="loss", sl="spectral_loss", rl="recons_loss", e="entropy", u="usage", uc="used_curr", gn="gn", pn="pn", dk="dk")
 
-    for i, x in logger.get_range(data_processor.train_loader):
+    for i, x in tqdm(data_processor.train_loader):
         if isinstance(x, (tuple, list)):
             x, y = x
         else:
