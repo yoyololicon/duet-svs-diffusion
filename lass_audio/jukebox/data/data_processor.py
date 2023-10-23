@@ -48,7 +48,7 @@ class DataProcessor():
         duration = 1 if hps.prior else 600
         hps.bandwidth = calculate_bandwidth(self.dataset, hps, duration=duration, sr=44100)
         self.create_datasets(hps)
-        self.create_samplers(hps)
+        # self.create_samplers(hps)
         self.create_data_loaders(hps)
         self.print_stats(hps)
 
