@@ -60,13 +60,13 @@ class DataProcessor():
         self.train_dataset = OffsetDataset(self.dataset, 0, train_len)
         self.test_dataset = OffsetDataset(self.dataset, train_len, len(self.dataset))
 
-    def create_samplers(self, hps):
-        if not dist.is_available():
-            self.train_sampler = BatchSampler(RandomSampler(self.train_dataset), batch_size=hps.bs, drop_last=True)
-            self.test_sampler = BatchSampler(RandomSampler(self.test_dataset), batch_size=hps.bs, drop_last=True)
-        else:
-            self.train_sampler = DistributedSampler(self.train_dataset)
-            self.test_sampler = DistributedSampler(self.test_dataset)
+    # def create_samplers(self, hps):
+    #     if not dist.is_available():
+    #         self.train_sampler = BatchSampler(RandomSampler(self.train_dataset), batch_size=hps.bs, drop_last=True)
+    #         self.test_sampler = BatchSampler(RandomSampler(self.test_dataset), batch_size=hps.bs, drop_last=True)
+    #     else:
+    #         self.train_sampler = DistributedSampler(self.train_dataset)
+    #         self.test_sampler = DistributedSampler(self.test_dataset)
 
     def create_data_loaders(self, hps):
         # Loader to load mini-batches
@@ -77,11 +77,9 @@ class DataProcessor():
 
         print('Creating Data Loader')
         self.train_loader = DataLoader(self.train_dataset, batch_size=hps.bs, num_workers=hps.nworkers,
-                                       sampler=self.train_sampler, pin_memory=False,
-                                       drop_last=True, collate_fn=collate_fn)
+                                       pin_memory=True, drop_last=True, collate_fn=collate_fn)
         self.test_loader = DataLoader(self.test_dataset, batch_size=hps.bs, num_workers=hps.nworkers,
-                                      sampler=self.test_sampler, pin_memory=False,
-                                      drop_last=False, collate_fn=collate_fn)
+                                      pin_memory=False, drop_last=False, collate_fn=collate_fn)
 
     def print_stats(self, hps):
         print_all(f"Train {len(self.train_dataset)} samples. Test {len(self.test_dataset)} samples")
