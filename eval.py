@@ -70,9 +70,17 @@ if __name__ == "__main__":
     parser.add_argument("ckpt", type=str, help="Path to checkpoint file")
     parser.add_argument("medleyvox", type=str, help="Path to MedleyVox dataset")
     parser.add_argument("-T", default=100, type=int, help="Number of diffusion steps")
+    parser.add_argument("-S", default=40.0, type=float, help="S churn")
     parser.add_argument("--out", type=str, help="Output directory")
     parser.add_argument("--cond", action="store_true", help="Use conditioning")
+    parser.add_argument(
+        "--self-cond", action="store_true", help="Use self conditioning"
+    )
     parser.add_argument("--hop-length", type=int, help="Hop length")
+    parser.add_argument("--window", type=int, help="Window size")
+    parser.add_argument("--full-duet", action="store_true", help="Drop duet songs")
+    parser.add_argument("--retry", type=int, default=0, help="Retry")
+    parser.add_argument("--outer-retry", type=int, default=0, help="Outer retry")
 
     args = parser.parse_args()
 
@@ -109,12 +117,16 @@ if __name__ == "__main__":
     dataset = MedleyVox(
         args.medleyvox,
         sample_rate=sr,
+        drop_duet=not args.full_duet,
     )
 
     hop_length = length // 2 if args.hop_length is None else args.hop_length
+    window_size = length if args.window is None else args.window
     loss_func = PITLossWrapper(pairwise_neg_sisdr, pit_from="pw_mtx")
+    s_churn = args.S
 
-    print(length / sr, hop_length / sr)
+    if args.cond:
+        print(window_size / sr, hop_length / sr)
 
     accumulate_metrics_mean = {}
 
@@ -124,67 +136,80 @@ if __name__ == "__main__":
             y = y_cpu.cuda()
             n = y.shape[0]
 
-            if args.cond:
-                cond = torch.zeros(n, length).cuda()
-                sub_m = torch.zeros(length).cuda()
-                result = []
-                for sub_x, sub_y in zip(
-                    torch.split(x, hop_length), torch.split(y, hop_length, 1)
-                ):
-                    noise = torch.randn(n, length).cuda()
-                    overlap_size = length - sub_x.numel()
-                    sub_m = torch.cat([sub_m[-overlap_size:], sub_x])
-                    cond = cond[:, -overlap_size:]
-                    pred = separate_mixture(
-                        sub_m,
-                        noise,
-                        denoise_fn,
-                        sigmas,
-                        s_churn=0.0,
-                        cond=cond,
-                        cond_index=overlap_size,
-                        use_tqdm=False,
-                        gaussian=False,
-                    )
-                    cond = torch.cat([cond, sub_y], dim=1)
-                    result.append(pred[:, -sub_x.numel() :])
+            outer_trials = []
+            for i in range(args.outer_retry + 1):
+                if args.cond:
+                    cond = torch.zeros(n, window_size).cuda()
+                    sub_m = torch.zeros(window_size).cuda()
+                    result = []
+                    for sub_x, sub_y in zip(
+                        torch.split(x, hop_length), torch.split(y, hop_length, 1)
+                    ):
+                        noise = torch.randn(n, window_size).cuda()
+                        overlap_size = window_size - sub_x.numel()
+                        sub_m = torch.cat([sub_m[-overlap_size:], sub_x])
+                        cond = cond[:, -overlap_size:]
 
-                    if len(result) == 1:
-                        loss, pred = loss_func(
-                            result[0].unsqueeze(0), sub_y.unsqueeze(0), return_est=True
+                        trials = []
+                        for i in range(args.retry + 1):
+                            pred = separate_mixture(
+                                sub_m,
+                                noise,
+                                denoise_fn,
+                                sigmas,
+                                s_churn=s_churn,
+                                cond=cond,
+                                cond_index=overlap_size,
+                                use_tqdm=False,
+                                gaussian=False,
+                            )
+                            sub_pred = pred[:, -sub_x.numel() :]
+
+                            if args.retry > 0:
+                                loss, align_pred = loss_func(
+                                    sub_pred.unsqueeze(0),
+                                    sub_y.unsqueeze(0),
+                                    return_est=True,
+                                )
+                                trials.append((loss, align_pred.squeeze()))
+                            else:
+                                trials.append((0, sub_pred))
+
+                        _, sub_pred = min(trials, key=lambda x: x[0])
+                        cond = torch.cat(
+                            [cond, sub_pred if args.self_cond else sub_y],
+                            dim=1,
                         )
-                        result[0] = pred.squeeze()
+                        result.append(sub_pred)
 
-                result = torch.cat(result, dim=1)
-            else:
-                original_length = x.numel()
-                padding = length - (original_length % length)
-                if padding < length:
-                    x = torch.cat([x, x.new_zeros(padding)], dim=0)
+                        # if len(result) == 1:
+                        #     loss, pred = loss_func(
+                        #         result[0].unsqueeze(0), sub_y.unsqueeze(0), return_est=True
+                        #     )
+                        #     result[0] = pred.squeeze()
 
-                cond = None
-                result = torch.empty(n, x.numel()).cuda()
-                for i in range(0, x.numel() - hop_length, hop_length):
-                    chunk = x[i : i + length]
-                    noise = torch.randn(n, length).cuda()
-                    pred = separate_mixture(
-                        chunk,
-                        noise,
+                    result = torch.cat(result, dim=1)
+                else:
+                    original_length = x.numel()
+                    padding = length - (original_length % length)
+                    if padding < length:
+                        x = torch.cat([x, x.new_zeros(padding)], dim=0)
+
+                    result = separate_mixture(
+                        x,
+                        torch.randn(n, x.numel()).cuda(),
                         denoise_fn,
                         sigmas,
-                        s_churn=0.0,
-                        cond=cond,
-                        cond_index=hop_length,
+                        s_churn=s_churn,
                         use_tqdm=False,
-                    )
-                    cond = pred[:, hop_length:]
-                    result[:, i : i + length] = pred
+                    )[:, :original_length]
 
-                result = result[:, :original_length]
+                loss, reordered_sources = loss_func(
+                    result.unsqueeze(0), y.unsqueeze(0), return_est=True
+                )
+                outer_trials.append((loss, reordered_sources))
 
-            loss, reordered_sources = loss_func(
-                result.unsqueeze(0), y.unsqueeze(0), return_est=True
-            )
+            _, reordered_sources = min(outer_trials, key=lambda x: x[0])
             est = reordered_sources.squeeze().cpu().numpy()
 
             utt_metrics = get_metrics(
@@ -194,6 +219,11 @@ if __name__ == "__main__":
                 sample_rate=sr,
                 metrics_list=COMPUTE_METRICS,
             )
+
+            # calculate improvement
+            for metric in COMPUTE_METRICS:
+                v = utt_metrics.pop("input_" + metric)
+                utt_metrics[metric + "i"] = utt_metrics[metric] - v
 
             for k, v in utt_metrics.items():
                 if k not in accumulate_metrics_mean:
@@ -219,3 +249,5 @@ if __name__ == "__main__":
                 for i, s in enumerate(est):
                     out_path = out_dir / f"{ids[i]}.wav"
                     sf.write(out_path, s, sr, "PCM_16")
+
+    print(accumulate_metrics_mean)
