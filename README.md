@@ -37,7 +37,7 @@ Them, modified the `datamodule` section of the config to point to the right path
 Resume run from a checkpoint
 
 ```bash
-python train.py exp=base_test +ckpt=/logs/ckpts/2022-08-17-01-22-18/'last.ckpt'
+python train.py exp=singing +ckpt=/logs/ckpts/2022-08-17-01-22-18/'last.ckpt'
 ```
 
 ## Evaluation
