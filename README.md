@@ -52,7 +52,7 @@ python eval.py logs/runs/XXXX/.hydra/config.yaml logs/ckpts/XXXX/last.ckpt /your
 Some important arguments:
 
 1. `-T`: number of diffusion steps
-2. `--cond`: use auto-regressive conditioning on the ground truth (teacher forcing). Without this flag, the model will generate the full lenght audio at once
+2. `--cond`: use auto-regressive conditioning on the ground truth (teacher forcing). Without this flag, the model will generate the full length audio at once
 3. `--self-cond`: perform auto-regressive conditioning on the generated audio if use together with `--cond`
 4. `--hop-length`: the hop length of the moving window
 5. `--window`: the size of the moving window. Default to the same length as training data
