@@ -147,8 +147,12 @@ if __name__ == "__main__":
                     ):
                         noise = torch.randn(n, window_size).cuda()
                         overlap_size = window_size - sub_x.numel()
-                        sub_m = torch.cat([sub_m[-overlap_size:], sub_x])
-                        cond = cond[:, -overlap_size:]
+                        if overlap_size > 0:
+                            sub_m = torch.cat([sub_m[-overlap_size:], sub_x])
+                            cond = cond[:, -overlap_size:]
+                        else:
+                            sub_m = sub_x
+                            cond = None
 
                         trials = []
                         for i in range(args.retry + 1):
@@ -177,16 +181,11 @@ if __name__ == "__main__":
 
                         _, sub_pred = min(trials, key=lambda x: x[0])
                         cond = torch.cat(
-                            [cond, sub_pred if args.self_cond else sub_y],
+                            ([] if cond is None else [cond])
+                            + [sub_pred if args.self_cond else sub_y],
                             dim=1,
                         )
                         result.append(sub_pred)
-
-                        # if len(result) == 1:
-                        #     loss, pred = loss_func(
-                        #         result[0].unsqueeze(0), sub_y.unsqueeze(0), return_est=True
-                        #     )
-                        #     result[0] = pred.squeeze()
 
                     result = torch.cat(result, dim=1)
                 else:
