@@ -1,14 +1,10 @@
-# Trainer for [`multi-speaker-diff-sep(sde)`](yoyololicon/multi-speaker-diff-sep)
+# Unsupervised Singing Voice Separation
+
+Source code of the paper [Zero-Shot Duet Singing Voices Separation with
+Diffusion Models](https://sdx-workshop.github.io/papers/Yu.pdf) at the SDX workshop 2023.
 
 ## Setup
 
-(Optional) Create virtual environment and activate it
-
-```bash
-python3 -m venv venv
-
-source venv/bin/activate
-```
 Install requirements
 
 ```bash
@@ -29,23 +25,53 @@ WANDB_API_KEY=a21dzbqlybbzccqla4txa21dzbqlybbzccqla4tx
 HUGGINGFACE_TOKEN=hf_NUNySPyUNsmRIb9sUC4FKR2hIeacJOr4Rm
 ```
 
-## Run Experiments
-Run test experiment, see the [`exp`](exp/) folder for other experiments (create your own `.yaml` file there to run a custom experiment!)
-```bash
-python train.py exp=base_test
-```
+## Training
 
-Run on GPU(s)
-
+The config we used for the paper is [`exp/singing.yaml`](exp/singing.yaml), you can run it with
 ```bash
-python train.py exp=base_test trainer.gpus=1
+python train.py exp=singing
 ```
+You'll need to download the relevant dataset and resample them to 24 kHz. 
+Them, modified the `datamodule` section of the config to point to the right path.
 
 Resume run from a checkpoint
 
 ```bash
 python train.py exp=base_test +ckpt=/logs/ckpts/2022-08-17-01-22-18/'last.ckpt'
 ```
+
+## Evaluation
+
+First, download the [MedleyVox](https://github.com/jeonchangbin49/MedleyVox?tab=readme-ov-file) dataset.
+Then, run the following command to evaluate the model on the `duet` subset of the dataset.
+
+```bash
+python eval.py logs/runs/XXXX/.hydra/config.yaml logs/ckpts/XXXX/last.ckpt /your/path/to/MedleyVox -T 100 --cond --hop-length 32768 --self-cond --retry 2
+```
+
+Some important arguments:
+
+1. `-T`: number of diffusion steps
+2. `--cond`: use auto-regressive conditioning on the ground truth (teacher forcing). Without this flag, the model will generate the full lenght audio at once
+3. `--self-cond`: perform auto-regressive conditioning on the generated audio if use together with `--cond`
+4. `--hop-length`: the hop length of the moving window
+5. `--window`: the size of the moving window. Default to the same length as training data
+6. `--retry`: number of retries for each auto-regressive step. The algorithm with generate `retry + 1` candidates and pick the most similar one to the ground truth. Default to 0
+
+For other arguments, please check out the code.
+
+### NMF baseline
+
+This baseline depends on `torchnmf`.
+
+```bash
+python eval_nmf.py /your/path/to/MedleyVox/ --thresh 0.08 --division 10 --kernel-size 7
+```
+
+### Checkpoint/Logs
+
+Our pre-trained singing voice diffusion model can be downloaded [here](https://drive.google.com/drive/folders/1nAj0JDiG70ddr_7UnhszpIiVCh4SzqgW?usp=sharing).
+You can find the training logs and unconditional singing samples generated during training on [wandb](https://api.wandb.ai/links/aimless/fqtcyjke).
 
 ## FAQ
 
