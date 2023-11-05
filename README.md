@@ -20,9 +20,6 @@ DIR_DATA=/data
 WANDB_PROJECT=audioproject
 WANDB_ENTITY=johndoe
 WANDB_API_KEY=a21dzbqlybbzccqla4txa21dzbqlybbzccqla4tx
-
-# Required if using Common Voice dataset
-HUGGINGFACE_TOKEN=hf_NUNySPyUNsmRIb9sUC4FKR2hIeacJOr4Rm
 ```
 
 ## Training
@@ -74,16 +71,6 @@ Our pre-trained singing voice diffusion model can be downloaded [here](https://d
 You can find the training logs and unconditional singing samples generated during training on [wandb](https://api.wandb.ai/links/aimless/fqtcyjke).
 
 ## FAQ
-
-<details>
-<summary>How do I use the CommonVoice dataset?</summary>
-
-Before running an experiment on commonvoice dataset you have to:
-1. Create a Huggingface account if you don't already have one [here](https://huggingface.co/join)
-2. Accept the terms of the version of [common voice dataset](https://huggingface.co/mozilla-foundation) you will be using by clicking on it and selecting "Access repository".
-3. Add your [access token](https://huggingface.co/settings/tokens) to the `.env` file, for example `HUGGINGFACE_TOKEN=hf_NUNySPyUNsmRIb9sUC4FKR2hIeacJOr4Rm`.
-
-</details>
 
 <details>
 <summary>How do I load the model once I'm done training?</summary>
